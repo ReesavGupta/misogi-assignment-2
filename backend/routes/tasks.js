@@ -8,11 +8,9 @@ import {
 import { handleValidationErrors } from '../utils/helpers.js'
 import { asyncHandler } from '../utils/helpers.js'
 
-// In-memory storage (we can replace with database in production grade app)
 let tasks = []
 let taskIdCounter = 1
 
-// Validation schemas
 const taskValidation = [
   body('input')
     .trim()
@@ -31,7 +29,6 @@ const meetingValidation = [
     .withMessage('Transcript too long (max 10000 characters)'),
 ]
 
-// FIXED: Updated validation for task updates
 const taskUpdateValidation = [
   body('task_name')
     .optional()
@@ -46,15 +43,12 @@ const taskUpdateValidation = [
   body('due_date')
     .optional()
     .custom((value) => {
-      // Allow empty string or null
       if (value === '' || value === null || value === undefined) {
         return true
       }
-      // Validate ISO date format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
         throw new Error('Invalid date format (use YYYY-MM-DD)')
       }
-      // Check if it's a valid date
       const date = new Date(value)
       if (isNaN(date.getTime())) {
         throw new Error('Invalid date')
@@ -64,11 +58,9 @@ const taskUpdateValidation = [
   body('due_time')
     .optional()
     .custom((value) => {
-      // Allow empty string or null
       if (value === '' || value === null || value === undefined) {
         return true
       }
-      // Validate time format
       if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
         throw new Error('Invalid time format (use HH:MM)')
       }
@@ -84,7 +76,6 @@ const taskUpdateValidation = [
     .withMessage('Completed must be boolean'),
 ]
 
-// Helper functions
 const findTaskById = (id) => {
   const task = tasks.find((task) => task.id === parseInt(id))
   return task
@@ -92,18 +83,15 @@ const findTaskById = (id) => {
 
 const sortTasks = (tasksArray) => {
   return tasksArray.sort((a, b) => {
-    // Completed tasks go to bottom
     if (a.completed !== b.completed) {
       return a.completed ? 1 : -1
     }
 
-    // Sort by priority (P1 highest, P4 lowest)
     const priorityOrder = { P1: 1, P2: 2, P3: 3, P4: 4 }
     if (a.priority !== b.priority) {
       return priorityOrder[a.priority] - priorityOrder[b.priority]
     }
 
-    // Sort by due date
     if (a.due_date && b.due_date) {
       const dateA = new Date(`${a.due_date} ${a.due_time || '00:00'}`)
       const dateB = new Date(`${b.due_date} ${b.due_time || '00:00'}`)
@@ -112,11 +100,9 @@ const sortTasks = (tasksArray) => {
       }
     }
 
-    // Tasks with due dates come first
     if (a.due_date && !b.due_date) return -1
     if (!a.due_date && b.due_date) return 1
 
-    // Sort by creation date as final fallback
     return new Date(b.createdAt) - new Date(a.createdAt)
   })
 }
@@ -130,11 +116,9 @@ const generateTaskResponse = (task) => ({
     : false,
 })
 
-// FIXED: Sanitize update data function
 const sanitizeUpdateData = (updates) => {
   const sanitized = {}
 
-  // Only include fields that are actually provided and valid
   if (updates.task_name !== undefined && updates.task_name.trim() !== '') {
     sanitized.task_name = updates.task_name.trim()
   }
@@ -170,7 +154,6 @@ const sanitizeUpdateData = (updates) => {
 
 // Routes
 
-// Create single task from natural language
 router.post(
   '/parse-task',
   taskValidation,
@@ -211,7 +194,6 @@ router.post(
   })
 )
 
-// Create multiple tasks from meeting transcript
 router.post(
   '/parse-meeting',
   meetingValidation,
@@ -260,7 +242,6 @@ router.post(
   })
 )
 
-// Get all tasks with filtering and pagination
 router.get(
   '/tasks',
   [
@@ -350,15 +331,12 @@ router.get(
       )
     }
 
-    // Sort tasks
     const sortedTasks = sortTasks(filteredTasks)
 
-    // Pagination
     const startIndex = (parseInt(page) - 1) * parseInt(limit)
     const endIndex = startIndex + parseInt(limit)
     const paginatedTasks = sortedTasks.slice(startIndex, endIndex)
 
-    // Statistics
     const stats = {
       total: tasks.length,
       filtered: sortedTasks.length,
@@ -396,7 +374,6 @@ router.get(
   })
 )
 
-// Get single task by ID
 router.get(
   '/tasks/:id',
   param('id').isInt({ min: 1 }).withMessage('Task ID must be positive integer'),
@@ -418,7 +395,6 @@ router.get(
   })
 )
 
-// FIXED: Update task route with better error handling and data sanitization
 router.put(
   '/tasks/:id',
   param('id').isInt({ min: 1 }).withMessage('Task ID must be positive integer'),
@@ -442,11 +418,9 @@ router.put(
     }
 
     try {
-      // Sanitize the update data
       const sanitizedUpdates = sanitizeUpdateData(updates)
       console.log('Sanitized updates:', sanitizedUpdates)
 
-      // Validate that we have at least one field to update
       if (Object.keys(sanitizedUpdates).length === 0) {
         return res.status(400).json({
           success: false,
@@ -480,7 +454,6 @@ router.put(
   })
 )
 
-// Toggle task completion status
 router.patch(
   '/tasks/:id/toggle-complete',
   param('id').isInt({ min: 1 }).withMessage('Task ID must be positive integer'),
@@ -514,7 +487,6 @@ router.patch(
   })
 )
 
-// Delete single task
 router.delete(
   '/tasks/:id',
   param('id').isInt({ min: 1 }).withMessage('Task ID must be positive integer'),
@@ -540,7 +512,6 @@ router.delete(
   })
 )
 
-// Bulk operations
 router.post(
   '/tasks/bulk-action',
   [
@@ -607,7 +578,6 @@ router.post(
   })
 )
 
-// Bulk delete by source
 router.delete(
   '/tasks/bulk/:source',
   param('source')
@@ -632,7 +602,6 @@ router.delete(
   })
 )
 
-// Get task statistics
 router.get(
   '/stats/overview',
   asyncHandler(async (req, res) => {
@@ -701,7 +670,6 @@ router.get(
   })
 )
 
-// Export/Import tasks (for backup/restore)
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
@@ -781,7 +749,6 @@ router.post(
   })
 )
 
-// Error handling middleware
 router.use((error, req, res, next) => {
   console.error('Route error:', error)
 
