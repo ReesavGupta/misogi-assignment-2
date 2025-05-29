@@ -5,28 +5,12 @@ import {
   parseNaturalLanguage,
   parseMeetingTranscript,
 } from '../utils/openaiService.js'
+import { handleValidationErrors } from '../utils/helpers.js'
+import { asyncHandler } from '../utils/helpers.js'
 
-// In-memory storage (replace with database in production)
+// In-memory storage (we can replace with database in production grade app)
 let tasks = []
 let taskIdCounter = 1
-
-// Middleware for validation error handling
-const handleValidationErrors = (req, res, next) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      error: 'Validation error',
-      details: errors.array(),
-    })
-  }
-  next()
-}
-
-// Middleware for async error handling
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next)
-}
 
 // Validation schemas
 const taskValidation = [
@@ -47,6 +31,7 @@ const meetingValidation = [
     .withMessage('Transcript too long (max 10000 characters)'),
 ]
 
+// FIXED: Updated validation for task updates
 const taskUpdateValidation = [
   body('task_name')
     .optional()
@@ -60,12 +45,35 @@ const taskUpdateValidation = [
     .withMessage('Assignee name too long'),
   body('due_date')
     .optional()
-    .isISO8601()
-    .withMessage('Invalid date format (use YYYY-MM-DD)'),
+    .custom((value) => {
+      // Allow empty string or null
+      if (value === '' || value === null || value === undefined) {
+        return true
+      }
+      // Validate ISO date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        throw new Error('Invalid date format (use YYYY-MM-DD)')
+      }
+      // Check if it's a valid date
+      const date = new Date(value)
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date')
+      }
+      return true
+    }),
   body('due_time')
     .optional()
-    .matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Invalid time format (use HH:MM)'),
+    .custom((value) => {
+      // Allow empty string or null
+      if (value === '' || value === null || value === undefined) {
+        return true
+      }
+      // Validate time format
+      if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
+        throw new Error('Invalid time format (use HH:MM)')
+      }
+      return true
+    }),
   body('priority')
     .optional()
     .isIn(['P1', 'P2', 'P3', 'P4'])
@@ -121,6 +129,44 @@ const generateTaskResponse = (task) => ({
     ? new Date(`${task.due_date} ${task.due_time || '23:59'}`) < new Date()
     : false,
 })
+
+// FIXED: Sanitize update data function
+const sanitizeUpdateData = (updates) => {
+  const sanitized = {}
+
+  // Only include fields that are actually provided and valid
+  if (updates.task_name !== undefined && updates.task_name.trim() !== '') {
+    sanitized.task_name = updates.task_name.trim()
+  }
+
+  if (updates.assignee !== undefined) {
+    sanitized.assignee = updates.assignee.trim() || null
+  }
+
+  if (updates.due_date !== undefined) {
+    sanitized.due_date = updates.due_date === '' ? null : updates.due_date
+  }
+
+  if (updates.due_time !== undefined) {
+    sanitized.due_time = updates.due_time === '' ? null : updates.due_time
+  }
+
+  if (updates.priority !== undefined) {
+    sanitized.priority = updates.priority
+  }
+
+  if (updates.completed !== undefined) {
+    sanitized.completed = updates.completed
+    // Set completion timestamp if marking as completed
+    if (updates.completed) {
+      sanitized.completedAt = new Date().toISOString()
+    } else {
+      sanitized.completedAt = null
+    }
+  }
+
+  return sanitized
+}
 
 // Routes
 
@@ -372,7 +418,7 @@ router.get(
   })
 )
 
-// Update task
+// FIXED: Update task route with better error handling and data sanitization
 router.put(
   '/tasks/:id',
   param('id').isInt({ min: 1 }).withMessage('Task ID must be positive integer'),
@@ -382,27 +428,55 @@ router.put(
     const taskId = parseInt(req.params.id)
     const updates = req.body
 
+    console.log('Update request received for task ID:', taskId)
+    console.log('Update data:', updates)
+
     const taskIndex = tasks.findIndex((task) => task.id === taskId)
 
     if (taskIndex === -1) {
+      console.log('Task not found:', taskId)
       return res.status(404).json({
         success: false,
         error: 'Task not found',
       })
     }
 
-    // Update task
-    tasks[taskIndex] = {
-      ...tasks[taskIndex],
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    }
+    try {
+      // Sanitize the update data
+      const sanitizedUpdates = sanitizeUpdateData(updates)
+      console.log('Sanitized updates:', sanitizedUpdates)
 
-    res.json({
-      success: true,
-      task: generateTaskResponse(tasks[taskIndex]),
-      message: 'Task updated successfully',
-    })
+      // Validate that we have at least one field to update
+      if (Object.keys(sanitizedUpdates).length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid fields provided for update',
+        })
+      }
+
+      // Update task with sanitized data
+      const originalTask = tasks[taskIndex]
+      tasks[taskIndex] = {
+        ...originalTask,
+        ...sanitizedUpdates,
+        updatedAt: new Date().toISOString(),
+      }
+
+      console.log('Task updated successfully:', tasks[taskIndex])
+
+      res.json({
+        success: true,
+        task: generateTaskResponse(tasks[taskIndex]),
+        message: 'Task updated successfully',
+      })
+    } catch (error) {
+      console.error('Error updating task:', error)
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update task',
+        details: error.message,
+      })
+    }
   })
 )
 

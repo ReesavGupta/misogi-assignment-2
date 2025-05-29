@@ -7,7 +7,7 @@
     "dev": "node server.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "Reesav Gupta",
   "license": "ISC",
   "description": "",
   "dependencies": {

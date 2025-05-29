@@ -1,6 +1,6 @@
 import express, { json } from 'express'
 import cors from 'cors'
-import 'dotenv/config' // No need to call dotenv.config() again
+import 'dotenv/config' 
 
 import taskRoutes from './routes/tasks.js'
 
