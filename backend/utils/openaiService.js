@@ -106,3 +106,4 @@ function fallbackParse(input) {
 export default {
   parseNaturalLanguage,
 }
+
