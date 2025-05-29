@@ -8,7 +8,6 @@ import {
   Check,
   X,
   FileText,
-  Users,
   Sparkles,
   CheckCircle2,
   Circle,
